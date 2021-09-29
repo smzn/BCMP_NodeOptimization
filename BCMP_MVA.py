@@ -109,7 +109,12 @@ class BCMP_MVA:
         e = np.eye(len(p)-1) #次元を1つ小さくする
         pe = p[1:len(p), 1:len(p)].T - e #行と列を指定して次元を小さくする
         lmd = p[0, 1:len(p)] #0行1列からの値を右辺に用いる
-        slv = solve(pe, lmd * (-1)) #2021/09/28 ここで逆行列がないとエラーが出る
+        try:
+            slv = solve(pe, lmd * (-1)) #2021/09/28 ここで逆行列がないとエラーが出る
+        except np.linalg.LinAlgError as err: #2021/09/29 Singular Matrixが出た時は、対角成分に小さい値を足すことで対応 https://www.kuroshum.com/entry/2018/12/28/python%E3%81%A7singular_matrix%E3%81%8C%E8%B5%B7%E3%81%8D%E3%82%8B%E7%90%86%E7%94%B1
+            print('Singular Matrix')
+            pe += e * 0.00001 
+            slv = solve(pe, lmd * (-1)) 
         #lmd *= -1
         #slv = np.linalg.pinv(pe) * lmd #疑似逆行列で求める
         alpha = np.insert(slv, 0, 1.0) #α1=1を追加

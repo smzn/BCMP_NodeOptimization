@@ -114,7 +114,7 @@ class BCMP_NodeOptimization:
         toolbox.register( "individual", tools.initRepeat, creator.Individual, toolbox.attribute, self.N ) #初期個体の生成(遺伝子の長さはN)
         toolbox.register( "population", tools.initRepeat, list, toolbox.individual ) #初期個体群を作成          
         toolbox.register("evaluate", self.getOptimizeGA)
-        toolbox.decorate("evaluate", tools.DeltaPenalty(self.feasible, 100.0))
+        toolbox.decorate("evaluate", tools.DeltaPenalty(self.feasible, 100000.0))
         toolbox.register("select", tools.selTournament, tournsize=3)
         toolbox.register( "mate", tools.cxTwoPoint )
         toolbox.register( "mutate", tools.mutFlipBit, indpb=0.05 )
@@ -129,7 +129,7 @@ class BCMP_NodeOptimization:
         pop = toolbox.population(n=npop)#個体数
         algorithms.eaSimple( pop, toolbox, cxpb = 0.8, mutpb=0.5, ngen=ngen, stats=stats, halloffame=hof, verbose=True)#世代数指定
         best_ind = tools.selBest(pop, 1)[0]
-        print("最も良い個体は %sで、そのときの目的関数の値は %s" % (best_ind, best_ind.fitness.values))
+        #print("最も良い個体は %sで、そのときの目的関数の値は %s" % (best_ind, best_ind.fitness.values))
         return best_ind, best_ind.fitness.values
         
     #同値類を求める関数
@@ -188,15 +188,14 @@ class BCMP_NodeOptimization:
 if __name__ == '__main__':
     
     path = '/content/drive/MyDrive/研究/BCMP/'
-    #推移確率行列に合わせる
-    N = 33 #33
-    R = 2
-    K_total = 50
+    N = int(sys.argv[1]) #全体拠点数
+    R = int(sys.argv[2]) #クラス数
+    K_total = int(sys.argv[3]) #網内人数
+    node_number = int(sys.argv[4]) #拠点利用数
+    npop = int(sys.argv[5]) #遺伝子数
+    ngen = int(sys.argv[6]) #世代数
     popularity_file = 'TransitionProbability/csv/popularity2.csv'
     distance_file = 'TransitionProbability/csv/distance.csv'
-    node_number = 20 #利用拠点数
-    npop = 10 #遺伝子数
-    ngen = 10 #世代数
     bcmp = BCMP_NodeOptimization(N, R, K_total, path, popularity_file, distance_file, node_number)
     opt_node, obj = bcmp.getGA(npop, ngen)
     print('Optimized Node : {0}'.format(opt_node))
