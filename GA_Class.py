@@ -3,6 +3,8 @@ import random
 import copy
 import pandas as pd
 import matplotlib.pyplot as plt
+import time
+#from mpi4py import MPI
 
 class GA_Class:
     def __init__(self, npop, ngen, mutpb, weight_limit, path, data_file):
@@ -21,6 +23,9 @@ class GA_Class:
         self.ngpool = [[0 for i in range(len(self.parcel))] for j in range(self.npop * 2)] #次世代染色体プール
         self.bestfit_seriese = []#最適遺伝子適合度を入れたリスト
         self.mean_bestfit_seriese = [] #遺伝子全体平均の適合度
+        self.max_pool = [self.getRandInt(2) for i in range(len(self.parcel))] #最良遺伝子の初期値
+        self.max_pool_value = self.evalfit(self.max_pool) #最良遺伝子の評価値
+        self.max_pool_value_seriese = [] #最良遺伝子の評価値リスト
         
     def getGA(self):
         #打ち切り世代まで繰り返し
@@ -33,13 +38,15 @@ class GA_Class:
             print('遺伝子番号 : {0}, 最適遺伝子適合度 : {1}, 平均遺伝子適合度 : {2}'.format(elite, bestfit, mean))
             self.bestfit_seriese.append(bestfit)
             self.mean_bestfit_seriese.append(mean)
-        print(self.bestfit_seriese)
-        print(self.mean_bestfit_seriese)
+            self.max_pool_value_seriese.append(self.max_pool_value)
+        #print(len(self.bestfit_seriese))
+        #print(self.mean_bestfit_seriese)
         #グラフ描画
         x_axis = [i for i in range(self.ngen)]
         fig = plt.figure()
         plt.plot(x_axis, self.bestfit_seriese, label='elite')
         plt.plot(x_axis, self.mean_bestfit_seriese, label='mean')
+        plt.plot(x_axis, self.max_pool_value_seriese, label='max')
         plt.title('Transition of GA Value')
         plt.xlabel('Generation')
         plt.ylabel('Value of GA')
@@ -157,8 +164,12 @@ class GA_Class:
             if fitness > bestfit: #エリート解
                 bestfit = fitness
                 elite = i
+            if bestfit > self.max_pool_value: #今までの最良遺伝子との比較(2021/10/15)
+                self.max_pool_value = bestfit
+                self.max_pool = self.pool[elite]
             #print(pool[i],"  fitness =",fitness)
             totalfitness += fitness
+        #self.max_pool_value_seriese.append(self.max_pool_value)
         #エリート解の適応度と平均適応度を出力
         return (elite,bestfit,totalfitness/self.npop)
     
