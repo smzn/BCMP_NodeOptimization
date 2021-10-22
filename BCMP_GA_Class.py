@@ -8,10 +8,11 @@ import sys
 import numpy as np
 from numpy.random import randint
 from numpy.random import rand
-#from mpi4py import MPI
+from mpi4py import MPI
+
 
 class BCMP_GA_Class:
-    def __init__(self, N, R, K_total, path, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, weight_limit):
+    def __init__(self, N, R, K_total, path, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, rank, size, comm):
         self.N = N
         self.R = R
         self.K_total = K_total
@@ -29,49 +30,97 @@ class BCMP_GA_Class:
         self.ngen = ngen
         self.crosspb = crosspb
         self.mutpb = mutpb #突然変異率
-        self.pool = [[self.getRandInt1() for i in range(self.N)] for j in range(self.npop)]      #染色体プール
+        self.rank = rank
+        self.size = size
+        self.comm = comm
         self.scores = [0 for i in range(self.npop)] #各遺伝子のスコア
         self.bestfit_seriese = []#最適遺伝子適合度を入れたリスト
         self.mean_bestfit_seriese = [] #遺伝子全体平均の適合度
-        
+        #print('rank = {0}, size = {1}'.format(self.rank, self.size))
+        #初期遺伝子をブロードキャスト
+        if self.rank == 0:
+            self.pool = [[self.getRandInt1() for i in range(self.N)] for j in range(self.npop)] #遺伝子を初期化
+        else:
+            self.pool = [[]]
+        self.pool = self.comm.bcast(self.pool, root=0)
+        #print(self.pool)
         
     #https://machinelearningmastery.com/simple-genetic-algorithm-from-scratch-in-python/
     # genetic algorithm
     def genetic_algorithm(self): #objective, n_bits, n_iter, n_pop, r_cross, r_mut
-        best, best_eval = 0, self.getOptimizeBCMP(self.pool[0])
+        #if self.rank == 0:
+        #    best, best_eval = 0, self.getOptimizeBCMP(self.pool[0])
+        best, best_eval = self.pool[0], 10**5
         for gen in range(self.ngen):
-            print('{0}世代'.format(gen))
+            if self.rank == 0:
+                print('{0}世代'.format(gen))
+            #ここからrank担当遺伝子のみ計算をしていく
+            #遺伝子の最小利用拠点数のチェック
+            for pop_index in range(self.rank, self.npop, self.size):#自分の担当遺伝子だけループ 
+                #print('rank = {0}, npop = {1}'.format(self.rank, pop_index))
+                if sum(self.pool[pop_index]) < self.node_number: #最低利用拠点を下回ったら初期化
+                    self.pool[pop_index] = [self.getRandInt1() for i in range(self.N)]
+                self.scores[pop_index] = self.getOptimizeBCMP(self.pool[pop_index])
+                #print('id = {0}, scores = {1}, rank = {2}'.format(pop_index, self.scores[pop_index], self.rank))
+            
+            '''#全体でやる場合(並列化無し)
             for i in range(self.npop):
                 if sum(self.pool[i]) < self.node_number: #最低利用拠点を下回ったら初期化
                     self.pool[i] = [self.getRandInt1() for i in range(self.N)]
                     #print('初期化')
             self.scores = [self.getOptimizeBCMP(c) for c in self.pool]
-            print('評価 : {0}'.format(self.scores))
+            '''
+            #データの集約 (ここまでチェックする 10/20)
+            if self.rank == 0:
+                for i in range(1, self.size):
+                    scores = self.comm.recv(source=i, tag=11)
+                    #print('receive : {0}, {1}'.format(i, scores))
+                    #リストの結合
+                    for j in range(len(self.scores)):
+                        self.scores[j] += scores[j]
+            else:
+                self.comm.send(self.scores, dest=0, tag=11)
+            self.comm.barrier() #プロセス同期
+            if self.rank == 0:
+            #    print('Aggregation scores')
+                print('{1}世代評価 : {0}'.format(self.scores, gen))
+            #並列化ここまで(遺伝子情報を集約する)
+            
+            
+            #評価はrank0が行ってブロードキャストする
             # check for new best solution
-            for i in range(self.npop):
-                if self.scores[i] < best_eval and sum(self.pool[i]) >= self.node_number: #最小値を探す
-                    best, best_eval = self.pool[i], self.scores[i]
-                    print(">{0}世代, new best {1} = {2}".format(gen, self.pool[i], self.scores[i]))
-                    print('拠点利用数 : {0}'.format(sum(self.pool[i])))
-            # select parents
-            selected = [self.selection() for c in range(self.npop)] 
-            # create the next generation
-            children = list()
-            for i in range(0, self.npop, 2):
-                # get selected parents in pairs
-                p1, p2 = selected[i], selected[i+1] #遺伝子数が奇数だとエラー
-                # crossover and mutation
-                for c in self.crossover(p1, p2):
-                    # mutation
-                    self.mutation(c)
-                    # store for next generation
-                    children.append(c)
-            # replace population
-            self.pool = children
-            #世代毎の目的関数値を保存
-            self.bestfit_seriese.append(best_eval)
-            self.mean_bestfit_seriese.append(sum(self.scores)/len(self.scores))
-        self.getGraph()
+            if self.rank == 0:
+                for i in range(self.npop):
+                    if self.scores[i] < best_eval and sum(self.pool[i]) >= self.node_number: #最小値を探す
+                        best, best_eval = self.pool[i], self.scores[i]
+                        print("{0}世代, new best {1} = {2}".format(gen, self.pool[i], self.scores[i]))
+                        print('拠点利用数 : {0}'.format(sum(self.pool[i])))
+                # select parents
+                selected = [self.selection() for c in range(self.npop)] 
+                # create the next generation
+                children = list()
+                for i in range(0, self.npop, 2):
+                    # get selected parents in pairs
+                    p1, p2 = selected[i], selected[i+1] #遺伝子数が奇数だとエラー
+                    # crossover and mutation
+                    for c in self.crossover(p1, p2):
+                        # mutation
+                        self.mutation(c)
+                        # store for next generation
+                        children.append(c)
+                # replace population
+                self.pool = children
+                #世代毎の目的関数値を保存
+                self.bestfit_seriese.append(best_eval)
+                self.mean_bestfit_seriese.append(sum(self.scores)/len(self.scores))
+            #ここでブロードキャストする
+            self.pool = self.comm.bcast(self.pool, root=0)
+            best = self.comm.bcast(best, root=0)
+            best_eval = self.comm.bcast(best_eval, root=0)
+            #print('遺伝子同期(rank = {0}) : {1}'.format(self.rank, self.pool))
+            
+        if self.rank == 0:
+            self.getGraph()
         return [best, best_eval]
     	   
     	    
@@ -203,6 +252,9 @@ class BCMP_GA_Class:
         
         
 if __name__ == '__main__':
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
     path = '/content/drive/MyDrive/研究/BCMP/'
     N = int(sys.argv[1]) #全体拠点数
     R = int(sys.argv[2]) #クラス数
@@ -212,13 +264,14 @@ if __name__ == '__main__':
     ngen = int(sys.argv[6]) #世代数
     popularity_file = 'TransitionProbability/csv/popularity2.csv'
     distance_file = 'TransitionProbability/csv/distance.csv'
-    #data_file = 'GA/data.csv'
     crosspb = 0.5
     mutpb = 0.2
-    weight_limit = 1000
-    bcmp = BCMP_GA_Class(N, R, K_total, path, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, weight_limit)
-    #bcmp.getGAOptimization()
+    start = time.time()
+    bcmp = BCMP_GA_Class(N, R, K_total, path, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, rank, size, comm)
     best, score = bcmp.genetic_algorithm()
-    print('Done!')
-    print('f(%s) = %f' % (best, score))
+    if rank == 0:
+        print('Done!')
+        print('f(%s) = %f' % (best, score))
+        elapsed_time = time.time() - start
+        print ("calclation_time:{0}".format(elapsed_time) + "[sec]")
     
