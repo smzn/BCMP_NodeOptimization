@@ -12,7 +12,7 @@ from mpi4py import MPI
 
 
 class BCMP_GA_Class:
-    def __init__(self, N, R, K_total, path, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, rank, size, comm):
+    def __init__(self, N, R, K_total, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, rank, size, comm):
         self.N = N
         self.R = R
         self.K_total = K_total
@@ -20,11 +20,11 @@ class BCMP_GA_Class:
         self.mu = np.full((R, N), 1) #サービス率を同じ値で生成(サービス率は調整が必要)
         self.type_list = np.full(N, 1) #サービスタイプはFCFS
         self.m = np.full(N, 1) #今回は窓口数1(複数窓口は実装できていない)
-        self.path = path
-        sys.path.append(path)
-        popularity = self.getCSV(self.path + popularity_file) #拠点人気度(クラス別)
+        #self.path = path
+        #sys.path.append(path)
+        popularity = self.getCSV(popularity_file) #拠点人気度(クラス別)
         self.popularity = popularity.iloc[:,2:4].values.tolist() #人気度をリストに変換
-        self.distance = self.getCSV(self.path + distance_file) #拠点間距離の取り込み
+        self.distance = self.getCSV(distance_file) #拠点間距離の取り込み
         self.node_number = node_number #最低利用拠点数
         self.npop = npop
         self.ngen = ngen
@@ -60,8 +60,11 @@ class BCMP_GA_Class:
                 #print('rank = {0}, npop = {1}'.format(self.rank, pop_index))
                 if sum(self.pool[pop_index]) < self.node_number: #最低利用拠点を下回ったら初期化
                     self.pool[pop_index] = [self.getRandInt1() for i in range(self.N)]
+                start = time.time()
                 self.scores[pop_index] = self.getOptimizeBCMP(self.pool[pop_index])
-                #print('id = {0}, scores = {1}, rank = {2}'.format(pop_index, self.scores[pop_index], self.rank))
+                elapsed_time = time.time() - start
+                print ("rank = {1}, pop_id = {2}, calclation_time:{0}".format(elapsed_time, self.rank, pop_index) + "[sec]")
+                print('pop_index = {0}, scores = {1}, rank = {2}'.format(pop_index, self.scores[pop_index], self.rank))
             
             '''#全体でやる場合(並列化無し)
             for i in range(self.npop):
@@ -119,8 +122,8 @@ class BCMP_GA_Class:
             best_eval = self.comm.bcast(best_eval, root=0)
             #print('遺伝子同期(rank = {0}) : {1}'.format(self.rank, self.pool))
             
-        if self.rank == 0:
-            self.getGraph()
+        #if self.rank == 0:
+        #    self.getGraph()
         return [best, best_eval]
     	   
     	    
@@ -255,19 +258,19 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    path = '/content/drive/MyDrive/研究/BCMP/'
+    #path = '/content/drive/MyDrive/研究/BCMP/'
     N = int(sys.argv[1]) #全体拠点数
     R = int(sys.argv[2]) #クラス数
     K_total = int(sys.argv[3]) #網内人数
     node_number = int(sys.argv[4]) #拠点利用数
     npop = int(sys.argv[5]) #遺伝子数
     ngen = int(sys.argv[6]) #世代数
-    popularity_file = 'TransitionProbability/csv/popularity2.csv'
-    distance_file = 'TransitionProbability/csv/distance.csv'
+    popularity_file = './csv/popularity2.csv'
+    distance_file = './csv/distance.csv'
     crosspb = 0.5
     mutpb = 0.2
     start = time.time()
-    bcmp = BCMP_GA_Class(N, R, K_total, path, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, rank, size, comm)
+    bcmp = BCMP_GA_Class(N, R, K_total, popularity_file, distance_file, node_number, npop, ngen, crosspb, mutpb, rank, size, comm)
     best, score = bcmp.genetic_algorithm()
     if rank == 0:
         print('Done!')

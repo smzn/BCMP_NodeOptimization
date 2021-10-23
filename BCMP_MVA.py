@@ -87,7 +87,7 @@ class BCMP_MVA:
         #L_index = {'class0': self.L[:,0,last], 'class1' : self.L[:,1,last]} #クラス2個の場合
         L_index = {'class0': self.L[:,0,last]} #クラス1つの場合
         df_L = pd.DataFrame(L_index)
-        df_L.to_csv('/content/drive/MyDrive/研究/BCMP/csv/MVA_L(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+').csv')
+        #df_L.to_csv('/content/drive/MyDrive/研究/BCMP/csv/MVA_L(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+').csv')
         return self.L[:,:,last]
             
     def getState(self, k):#k=[k1,k2,...]を引数としたときにn進数を返す(R = len(K))
