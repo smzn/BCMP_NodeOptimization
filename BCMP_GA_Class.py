@@ -52,6 +52,7 @@ class BCMP_GA_Class:
         #    best, best_eval = 0, self.getOptimizeBCMP(self.pool[0])
         best, best_eval = self.pool[0], 10**5
         for gen in range(self.ngen):
+            self.scores = [0 for i in range(self.npop)] #2021/11/01 世代ずつ初期化(各rankで計算しない遺伝子が集約時に足されてしまう)
             if self.rank == 0:
                 print('{0}世代'.format(gen))
             #ここからrank担当遺伝子のみ計算をしていく
@@ -122,8 +123,8 @@ class BCMP_GA_Class:
             best_eval = self.comm.bcast(best_eval, root=0)
             #print('遺伝子同期(rank = {0}) : {1}'.format(self.rank, self.pool))
             
-        #if self.rank == 0:
-        #    self.getGraph()
+        if self.rank == 0:
+            self.getGraph()
         return [best, best_eval]
     	   
     	    
@@ -240,7 +241,7 @@ class BCMP_GA_Class:
         plt.ylabel('Value of GA')
         plt.grid()
         plt.legend()
-        fig.savefig('/content/drive/MyDrive/研究/BCMP/GA/graph/ga_transition.png')
+        fig.savefig('./ga_transition.png')
         
          
 
@@ -277,4 +278,6 @@ if __name__ == '__main__':
         print('f(%s) = %f' % (best, score))
         elapsed_time = time.time() - start
         print ("calclation_time:{0}".format(elapsed_time) + "[sec]")
+#実行方法
+#mpiexec -n 6 python3 BCMP_GA_Class.py 33(N) 2(R) 100(K) 20(最低利用拠点数) 18(遺伝子数) 10(世代数)
     
