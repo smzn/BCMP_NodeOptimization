@@ -64,7 +64,7 @@ class BCMP_MVA_Computation:
             '''
             k_combi_list_div_all = [[]for i in range(self.size)]
             if self.rank == 0: #rank0だけが組み合わせを作成
-                k_combi_list = self.getCombiList5(self.K, k_index)
+                k_combi_list = self.getCombiList4(self.K, k_index)#20220316 getCombiList5 -> getCombiList4
                 #with open(self.process_text, 'a') as f:
                 #    print('k_combi_list作成', file=f)
                 #k_combi_listをsize分だけ分割
@@ -137,7 +137,7 @@ class BCMP_MVA_Computation:
                                     #state_list_idx = self.list_index(state_list[n*self.R:(n+1)*self.R], kn) #前回の情報で更新 state_listは現在のn,rの場合で持ってくる (2022/02/04)
                                     list_index_time = time.time()
                                     #state_list_idx = self.list_index(state_list, kn)
-                                    l_value = state_dict.get(kn)#state_listで検索して、l_valueを返す
+                                    l_value = state_dict.get((kn,n,i))#state_listで検索して、l_valueを返す
                                     #if self.rank == 0:
                                     #    with open(self.process_text, 'a') as f:
                                     #        print('self.list_index(state_list, kn)での処理時間 : {0}'.format(time.time() - list_index_time), file=f)
@@ -218,6 +218,8 @@ class BCMP_MVA_Computation:
             state_list = []
             l_value_list =[]
             state_dict = {} #辞書利用(2022/02/11)
+            n_list = [] #20220320 add
+            r_list = [] #20220320 add
             if self.rank == 0:
                 #for idx, j in enumerate(k_combi_list_div[0]): #rank == 0の情報をまとめる
                 for idx, j in enumerate(k_combi_list_div): #rank == 0の情報をまとめる
@@ -226,6 +228,8 @@ class BCMP_MVA_Computation:
                         for r in range(self.R):
                             state_list.append(k_state) #self.Lの代わりにこれを渡す(2022/02/03)
                             l_value_list.append(L[n,r,idx]) #self.Lの代わりにこれを渡す(2022/02/03)
+                            n_list.append(n) #20220320
+                            r_list.append(r) #20220320
                 for i in range(1, self.size):
                     #k_combi_list_div_rank = self.comm.recv(source=i, tag=11)
                     #T_rank = self.comm.recv(source=i, tag=12)
@@ -247,6 +251,8 @@ class BCMP_MVA_Computation:
                                 #self.L[n,r,k_state] = l_rank[n,r,idx] #利用しない(2022/02/04)
                                 state_list.append(k_state) #self.Lの代わりにこれを渡す(2022/02/03)
                                 l_value_list.append(l_rank[n,r,idx]) #self.Lの代わりにこれを渡す(2022/02/03)
+                                n_list.append(n) #20220320
+                                r_list.append(r) #20220320
                 #self.comm.barrier() #プロセス同期
                 #print(self.T)
                 #print(self.lmd)
@@ -270,7 +276,8 @@ class BCMP_MVA_Computation:
             state_list = self.comm.bcast(state_list, root=0)
             l_value_list = self.comm.bcast(l_value_list, root=0)
             # 辞書に直す(2022/02/11)
-            state_dict = dict(zip(l_value_list,state_list))#state_listで検索して、l_value_listを返す
+            #state_dict = dict(zip(l_value_list,state_list))#state_listで検索して、l_value_listを返す
+            state_dict = dict(zip(zip(state_list, n_list, r_list),l_value_list)) #20220320
             ''' self.Lを利用しない 2022/02/04
             if self.rank != 0: #各プロセスでself.Lに集約(2022/02/03)
                 for n in range(self.N):
@@ -341,14 +348,14 @@ class BCMP_MVA_Computation:
             combi.pop()
         return Klist
     
-    '''
+    
     def getCombiList4(self, K, Pnum): #並列計算用：Pnumを増やしながら並列計算(2022/1/19)
         #Klist各拠点最大人数 Pnum足し合わせ人数
         Klist = [[j for j in range(K[i]+1)] for i in range(len(K))]
         combKlist = list(itertools.product(*Klist))
         combK = [list(cK) for cK in combKlist if sum(cK) == Pnum ]
         return combK
-    '''
+    
     
     def getCombiList5(self, K, Pnum): #(2022/02/08)
         #Klist各拠点最大人数 Pnum足し合わせ人数
