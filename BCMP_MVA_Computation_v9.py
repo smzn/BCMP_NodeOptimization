@@ -54,8 +54,6 @@ class BCMP_MVA_Computation:
                     mem = psutil.virtual_memory()
                     cpu = psutil.cpu_percent(interval=1)
                     print('k = {0}, Memory = {1}GB, CPU = {2}, elapse = {3}'.format(k_index, mem.used/10**9, cpu, time.time() - self.start), file=f)
-            if k_index == self.K_total:
-                last_L = l_value_list
             '''
             print('rank = {0}, k_index = {1}'.format(self.rank, k_index))
             if self.rank == 0:
@@ -275,6 +273,10 @@ class BCMP_MVA_Computation:
             #self.L = self.comm.bcast(self.L, root=0) #self.Lをブロードキャストするとエラーになるのでやめる(2022/02/03)
             state_list = self.comm.bcast(state_list, root=0)
             l_value_list = self.comm.bcast(l_value_list, root=0)
+            if k_index == self.K_total:
+                last_L = l_value_list
+            n_list = self.comm.bcast(n_list, root=0)
+            r_list = self.comm.bcast(r_list, root=0)
             # 辞書に直す(2022/02/11)
             #state_dict = dict(zip(l_value_list,state_list))#state_listで検索して、l_value_listを返す
             state_dict = dict(zip(zip(state_list, n_list, r_list),l_value_list)) #20220320
