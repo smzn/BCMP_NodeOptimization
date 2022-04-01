@@ -8,7 +8,7 @@ from mpi4py import MPI
 
 class BCMP_Simulation:
     
-    def __init__(self, N, R, K, mu, type_list, p, sim_time, rank, size):
+    def __init__(self, N, R, K, mu, type_list, p, theoretical, sim_time, rank, size):
         self.N = N #網内の拠点数(プログラム内部で指定する場合は1少なくしている)
         self.R = R #クラス数
         self.K = K #網内の客数 K = [K1, K2]のようなリスト。トータルはsum(K)
@@ -23,9 +23,12 @@ class BCMP_Simulation:
         self.timerate = np.zeros((self.N, sum(self.K)+1))#拠点での人数分布(0~K人の分布)、0人の場合も入る
         self.timerateclass = np.zeros((self.N, self.R, sum(self.K)+1))#拠点での人数分布(0~K人の分布)、0人の場合も入る、クラス別
         self.time = sim_time #シミュレーション時間
+        self.theoretical = theoretical
+        print('Theoretical Values : {0}'.format(self.theoretical.values))
         #print(self.p.iloc[0,1])
         self.rank = rank
         self.size = size
+        self.process_text = './process/process_N'+str(self.N)+'_R'+str(self.R)+'_K'+str(sum(self.K))+'_Time'+str(self.time)+'.txt'
         self.start = time.time()
         
         
@@ -181,7 +184,7 @@ class BCMP_Simulation:
             #Step2.5 RMSEの計算
             if elapse > regist_time:
                 rmse_sum = 0
-                theoretical_value = theoretical.values
+                theoretical_value = self.theoretical.values
                 lc = total_lengthclass / elapse #今までの時刻での平均系内人数
                 for n in range(self.N):
                     for r in range(self.R):
@@ -194,7 +197,12 @@ class BCMP_Simulation:
                 print('Rank = {0}, Calculation Time = {1}'.format(self.rank, time.time() - self.start))
                 print('Elapse = {0}, RMSE = {1}'.format(elapse, rmse_value))
                 print('Elapse = {0}, Lc = {1}'.format(elapse, lc))
-            
+                if self.rank == 0:
+                    with open(self.process_text, 'a') as f:
+                        print('Rank = {0}, Calculation Time = {1}'.format(self.rank, time.time() - self.start), file=f)
+                        print('Elapse = {0}, RMSE = {1}'.format(elapse, rmse_value), file=f)
+                        print('Elapse = {0}, Lc = {1}'.format(elapse, lc), file=f)
+                
         L = total_length / self.time
         Lc = total_lengthclass / self.time
         Q = total_waiting / self.time
@@ -205,7 +213,14 @@ class BCMP_Simulation:
         print('平均系内人数(クラス別)Lc : {0}'.format(Lc))
         print('平均待ち人数Q : {0}'.format(Q))
         print('平均待ち人数(クラス別)Qc : {0}'.format(Qc))
-       
+        if self.rank == 0:
+            with open(self.process_text, 'a') as f:
+                print('Rank = {0}, Calculation Time = {1}'.format(self.rank, time.time() - self.start), file=f)
+                print('平均系内人数L : {0}'.format(L), file=f)
+                print('平均系内人数(クラス別)Lc : {0}'.format(Lc), file=f)
+                print('平均待ち人数Q : {0}'.format(Q), file=f)
+                print('平均待ち人数(クラス別)Qc : {0}'.format(Qc), file=f)
+                   
         pd.DataFrame(L).to_csv('./csv/L(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
         pd.DataFrame(Lc).to_csv('./csv/Lc(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
         pd.DataFrame(Q).to_csv('./csv/Q(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
@@ -245,7 +260,7 @@ if __name__ == '__main__':
     theoretical = pd.read_csv(theoretical_file)
     #theoretical = pd.read_csv('csv/Theoretical33.csv')
     #time = 10000
-    bcmp = BCMP_Simulation(N, R, K, mu, type_list, p, sim_time, rank, size) 
+    bcmp = BCMP_Simulation(N, R, K, mu, type_list, p, theoretical, sim_time, rank, size) 
     start = time.time()
     bcmp.getSimulation()
     elapsed_time = time.time() - start
