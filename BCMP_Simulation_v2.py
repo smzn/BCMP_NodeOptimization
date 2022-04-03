@@ -221,13 +221,13 @@ class BCMP_Simulation:
                 print('平均待ち人数Q : {0}'.format(Q), file=f)
                 print('平均待ち人数(クラス別)Qc : {0}'.format(Qc), file=f)
                    
-        pd.DataFrame(L).to_csv('./csv/L(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
-        pd.DataFrame(Lc).to_csv('./csv/Lc(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
-        pd.DataFrame(Q).to_csv('./csv/Q(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
-        pd.DataFrame(Qc).to_csv('./csv/Qc(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
+        pd.DataFrame(L).to_csv('./csv/L(N_'+str(self.N)+',R_'+str(self.R)+',K_'+str(self.K)+',Time_'+str(self.time)+',Rank_'+str(self.rank)+').csv')
+        pd.DataFrame(Lc).to_csv('./csv/Lc(N_'+str(self.N)+',R_'+str(self.R)+',K_'+str(self.K)+',Time_'+str(self.time)+',Rank_'+str(self.rank)+').csv')
+        pd.DataFrame(Q).to_csv('./csv/Q(N_'+str(self.N)+',R_'+str(self.R)+',K_'+str(self.K)+',Time_'+str(self.time)+',Rank_'+str(self.rank)+').csv')
+        pd.DataFrame(Qc).to_csv('./csv/Qc(N_'+str(self.N)+',R_'+str(self.R)+',K_'+str(self.K)+',Time_'+str(self.time)+',Rank_'+str(self.rank)+').csv')
         rmse_index = {'time': rmse_time, 'RMSE': rmse}
         df_rmse = pd.DataFrame(rmse_index)
-        df_rmse.to_csv('./csv/RMSE(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+',Time:'+str(self.time)+',Rank:'+str(self.rank)+').csv')
+        df_rmse.to_csv('./csv/RMSE(N_'+str(self.N)+',R_'+str(self.R)+',K_'+str(self.K)+',Time_'+str(self.time)+',Rank_'+str(self.rank)+').csv')
         
     def getExponential(self, param):
         return - math.log(1 - random.random()) / param 
