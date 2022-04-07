@@ -185,7 +185,11 @@ class BCMP_Simulation:
             print('queueclass : {0}'.format(queueclass))
             print('classorder : {0}'.format(classorder))
             '''
-            regist_time += regist_span
+            if self.rank == 0:
+                if elapse > regist_time:
+                    with open(self.process_text, 'a') as f:
+                        print('elapse = {0}'.format(elapse),file=f)
+                    regist_time += regist_span
            
         
         #Step2.5 RMSEの計算
@@ -262,6 +266,7 @@ class BCMP_Simulation:
         rmse_index = {'time': rmse_time, 'RMSE': rmse}
         df_rmse = pd.DataFrame(rmse_index)
         df_rmse.to_csv('./csv/RMSE(N_'+str(self.N)+',R_'+str(self.R)+',K_'+str(self.K)+',Time_'+str(self.time)+',Rank_'+str(self.rank)+').csv')
+        
         
     def getExponential(self, param):
         return - math.log(1 - random.random()) / param 
