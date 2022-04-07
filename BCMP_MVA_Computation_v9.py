@@ -42,6 +42,10 @@ class BCMP_MVA_Computation:
         self.start = time.time()
         #self.process_text = './process/process08.txt'
         self.process_text = './process/process_N'+str(self.N)+'_R'+str(self.R)+'_K'+str(self.K_total)+'_Core'+str(self.size)+'.txt'
+        self.cpu_list = []
+        self.mem_list = []
+        self.roop_time = []
+        self.combi_len = []
 
     def getMVA(self):
         state_list = [] #ひとつ前の階層の状態番号
@@ -54,6 +58,9 @@ class BCMP_MVA_Computation:
                     mem = psutil.virtual_memory()
                     cpu = psutil.cpu_percent(interval=1)
                     print('k = {0}, Memory = {1}GB, CPU = {2}, elapse = {3}'.format(k_index, mem.used/10**9, cpu, time.time() - self.start), file=f)
+                    self.cpu_list.append(cpu)
+                    self.mem_list.append(mem.used/10**9)
+                    self.roop_time.append(time.time() - self.start)
             '''
             print('rank = {0}, k_index = {1}'.format(self.rank, k_index))
             if self.rank == 0:
@@ -63,6 +70,10 @@ class BCMP_MVA_Computation:
             k_combi_list_div_all = [[]for i in range(self.size)]
             if self.rank == 0: #rank0だけが組み合わせを作成
                 k_combi_list = self.getCombiList4(self.K, k_index)#20220316 getCombiList5 -> getCombiList4
+                self.combi_len.append(len(k_combi_list))
+                with open(self.process_text, 'a') as f:
+                    print('Combination = {0}'.format(len(k_combi_list)), file=f)
+                    print(k_combi_list, file=f)
                 #with open(self.process_text, 'a') as f:
                 #    print('k_combi_list作成', file=f)
                 #k_combi_listをsize分だけ分割
@@ -300,6 +311,11 @@ class BCMP_MVA_Computation:
         #df_L = pd.DataFrame(L_index)
         #df_L.to_csv('/content/drive/MyDrive/研究/BCMP/csv/MVA_L(N:'+str(self.N)+',R:'+str(self.R)+',K:'+str(self.K)+').csv')
         #return self.L[:,:,last]
+        
+        if self.rank == 0:
+            df_info = pd.DataFrame({ 'combination': self.combi_len, 'memory' : self.mem_list, 'cpu' : self.cpu_list, 'elapse' : self.roop_time})
+            df_info.to_csv('./tp/camputation_info_N'+str(N)+'_R'+str(R)+'_K'+str(self.K_total)+'_Core'+str(self.size)+'.csv', index=True)
+		
         return last_L
             
     def list_index(self, l, val, default=-1):#リスト内に値がある場合、その要素番号を返す、ない場合は-1を返す(2022/02/04)
@@ -533,4 +549,4 @@ if __name__ == '__main__':
                 print('L[{0},{1},{3}] = {2}'.format(n, r, L[(n*R+r)],n*R+r))
                 Lr[n, r] = L[(n*R+r)]
         pd.DataFrame(Lr).to_csv('./tp/L_N'+str(N)+'_R'+str(R)+'_K'+str(K_total)+'_Core'+str(size)+'.csv', index=True)
-    #mpiexec -n 8 python3 BCMP_MVA_Computation.py 33 2 100
+    #mpiexec -n 8 python3 BCMP_MVA_Computation_v9.py 33 2 100
