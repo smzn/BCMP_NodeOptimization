@@ -105,8 +105,7 @@ class BCMP_MVA_Computation:
                     for r in range(self.R):
                         if self.type_list[n] == 3:
                             #self.T[n,r, k_state] = 1 / self.mu[r,n]
-                            T[n,r, idx] = 1 / self.mu[r,n]
-						#elif self.type_list[n] == 1 and self.[n] > 1: #複数窓口の場合を追加(2022/08/18)
+                            T[n,r, idx] = 1 / self.mu[r,n]	
                         else:
                             r1 = np.zeros(self.R) #K-1rを計算
                             r1[r] = 1 #対象クラスのみ1
@@ -117,37 +116,20 @@ class BCMP_MVA_Computation:
                                 continue
 
                             sum_l = 0
-                            for i in range(self.R):#k-1rを状態に変換
+                            for i in range(self.R):#(8.43)のRループ
                                 if np.min(k1v) >= 0: #全ての状態が0以上のとき(一応チェック)
-                                    #getState_time = time.time()
-                                    kn = self.getState(k1v)
-                                    #if self.rank == 0: #getStateは時間はかからない
-                                    #    with open(self.process_text, 'a') as f:
-                                    #        print('self.getState(k1v)での処理時間 : {0}'.format(time.time() - getState_time), file=f)
-                                    #sum_l += self.L[n, i, int(kn)] #knを整数型に変換 (self.Lを利用しない 2022/02/04)
-                                    #state_list_idx = self.list_index(state_list[n*self.R:(n+1)*self.R], kn) #前回の情報で更新 state_listは現在のn,rの場合で持ってくる (2022/02/04)
+                                    kn = self.getState(k1v) #k-r1の状態
                                     list_index_time = time.time()
-                                    #state_list_idx = self.list_index(state_list, kn)
                                     l_value = state_dict.get((kn,n,i))#state_listで検索して、l_valueを返す
-                                    #if self.rank == 0:
-                                    #    with open(self.process_text, 'a') as f:
-                                    #        print('self.list_index(state_list, kn)での処理時間 : {0}'.format(time.time() - list_index_time), file=f)
                                     if l_value is not None:
                                         sum_l += l_value 
-                                    #print(state_list[n*self.R:(n+1)*self.R])
-                                    #print('今回の状態番号 : {0}'.format(kn))
-                                    #print(state_list)
-                                    #print('state_list_idx : {0}'.format(state_list_idx))
-                                    #print(l_value_list)
-                                    #if state_list_idx >=0:
-                                        #print(l_value_list[n*self.R:(n+1)*self.R][state_list_idx])
-                                        #sum_l += l_value_list[n*self.R:(n+1)*self.R][state_list_idx] 
-                                        #print('今回のl_value_list[{1}]の値 : {0}'.format(l_value_list[state_list_idx + n * self.R + i],state_list_idx + n * self.R + i))
-                                        #sum_l += l_value_list[state_list_idx + n * self.R + r] 
                             if self.m[n] == 1: #P336 (8.43) Type-1,2,4 (m_i=1)
-                                #print('n = {0}, r = {1}, k_state = {2}'.format(n,r,k_state))
-                                #self.T[n, r, k_state] = 1 / self.mu[r, n] * (1 + sum_l)
                                 T[n, r, idx] = 1 / self.mu[r, n] * (1 + sum_l)
+							elif self.m[n] > 1: #複数窓口を追加(2022/08/19)
+								sum_pi = 0
+								for _j in range(self.m[n]-2+1): #(8.43) m>1のループ
+									sum_pi += self.getPi(n, _j, val, r1) #ここではk-1rではなく、引く前の値を渡す
+								T[n, r, idx] = 1 / (self.mu[r, n] * self.m[n]) * (1 + sum_l + sum_pi)
                 #print('T = {0}'.format(self.T))
                 #if self.rank == 0:
                 #    with open(self.process_text, 'a') as f:    
@@ -334,20 +316,7 @@ class BCMP_MVA_Computation:
         #lmd *= -1
         #slv = np.linalg.pinv(pe) * lmd #疑似逆行列で求める
         alpha = np.insert(slv, 0, 1.0) #α1=1を追加
-        return alpha    
-
-    def getCombiList2(self, combi, K, R, idx, Klist):
-        if len(combi) == R:
-            #print(combi)
-            Klist.append(combi.copy())
-            #print(Klist)
-            return Klist
-        for v in range(K[idx]+1):
-            combi.append(v)
-            Klist = self.getCombiList2(combi, K, R, idx+1, Klist)
-            combi.pop()
-        return Klist
-    
+        return alpha        
     
     def getCombiList4(self, K, Pnum): #並列計算用：Pnumを増やしながら並列計算(2022/1/19)
         #Klist各拠点最大人数 Pnum足し合わせ人数
@@ -356,19 +325,6 @@ class BCMP_MVA_Computation:
         combK = [list(cK) for cK in combKlist if sum(cK) == Pnum ]
         return combK
     
-    
-    def getCombiList5(self, K, Pnum): #(2022/02/08)
-        #Klist各拠点最大人数 Pnum足し合わせ人数
-        #最大数の指定
-        num = Pnum
-        if Pnum > np.max(K):
-            num = np.max(K)
-        #print(np.max(K))
-        Klist = [j for j in range(num + 1)] #利用する数値の指定
-        combK = [list(cK) for cK in list(itertools.combinations_with_replacement(Klist, len(K))) if sum(cK) == Pnum ]
-        #print(len(combK))
-        #print(sys.getsizeof(combK))
-        return combK
 
     def getTransitionProbability(self):
         pr = np.zeros((self.R*self.N, self.R*self.N))
@@ -497,7 +453,41 @@ class BCMP_MVA_Computation:
         pd.DataFrame(tp).to_csv('./tp/transition_probability_N'+str(N)+'_R'+str(R)+'_K'+str(self.K_total)+'_Core'+str(self.size)+'.csv', index=True)
 		
         return tp
+		
+		
+	def getPi(self, n, j, k, kr): #(8.43)piのループを求める
+		kkr = k - kr #指定クラスを1引いたもの
+		if min(kkr) < 0:
+			return 0
+		if j == 0 and sum(kkr) == 0: #Initializationより
+			return 1
+		if j == 1 and sum(kkr) == 0: #Initializationより
+			return 0
+		if j == 0 and sum(kkr) >0: #(8.45)
+			state_number = int(self.getState(kkr)) #既存の関数を利用
+			sum_emlam = 0
+			for _r in range(self.R): #(8.45)前半のsum
+				sum_emlam += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] #self.lmdはl_listと同じ形にしないといけない
+			sum_pi = 0
+			for _j in range(1, self.m[n]):
+				sum_pi += (self.m[n] - _j ) * self.getPi8_44(n, _j, kkr, kr) #このgetPiは人数を減らさない
+			return 1 - 1 / self.m[n] * (sum_emlam + sum_pi)
+			
+		if j > 0 and sum(kkr) > 0: #(8.44) 
+			sum_val = 0
+			state_number = int(self.getState(kkr))
+			for _r in range(self.R):
+				sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr)
+			return 1 / j * (sum_val)
 
+	def getPi8_44(self, n, j, k, kr): #(8.45)から(8.44)を呼び出すときだけ利用 (人数を減らさず呼び出し)
+		sum_val = 0
+		state_number = int(self.getState(k))
+		for _r in range(self.R):
+			kr = np.zeros(self.R)
+			kr[_r] += 1
+			sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, k, kr) #ここで呼び出すgetPiのkrを変更しないといけない->修正、値があった
+		return 1 / j * (sum_val)
 
 if __name__ == '__main__':
    
