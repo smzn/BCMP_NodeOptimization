@@ -46,8 +46,12 @@ class BCMP_MVA_Computation:
     def getMVA(self):
         state_list = [] #ひとつ前の階層の状態番号
         l_value_list =[] #ひとつ前の状態に対するLの値
+		lmd_value_list = [] #λ用リスト (2022/08/23)
         state_dict = {} #ひとつ前の状態に対する{l_value_list, state_list}の辞書
+		state_lmd_dict = {} #ひとつ前の状態に対する{lmd_value_list, state_list}の辞書
         last_L = []
+		last_lmd = [] #ループが終わった時の最後のlambda (2022/08/23)
+		#ここで書いてある変数はループ毎初期化が必要なので、一旦ここに書いて、ループ内でも初期化するために定義する？と思う(2022/08/23)
         for k_index in range(1, self.K_total+1):
             if self.rank == 0:
                 with open(self.process_text, 'a') as f:
@@ -190,7 +194,9 @@ class BCMP_MVA_Computation:
             #全体の処理を集約してからブロードキャスト
             state_list = []
             l_value_list =[]
+			lmd_value_list = [] #λ用リスト (2022/08/23)
             state_dict = {} #辞書利用(2022/02/11)
+			state_lmd_dict = {} #辞書利用(λ用) (2022/08/23)
             n_list = [] #20220320 add
             r_list = [] #20220320 add
             if self.rank == 0:
@@ -203,10 +209,12 @@ class BCMP_MVA_Computation:
                             l_value_list.append(L[n,r,idx]) #self.Lの代わりにこれを渡す(2022/02/03)
                             n_list.append(n) #20220320
                             r_list.append(r) #20220320
+							if n == 0:
+								lmd_value_list.append(lmd[r,idx]) #n=0のときだけ、λの値を追加 (2022/08/23)
                 for i in range(1, self.size):
                     #k_combi_list_div_rank = self.comm.recv(source=i, tag=11)
                     #T_rank = self.comm.recv(source=i, tag=12)
-                    #lmd_rank = self.comm.recv(source=i, tag=13)
+                    lmd_rank = self.comm.recv(source=i, tag=13) #lambdaも集約(2022/08/23)
                     l_rank = self.comm.recv(source=i, tag=14) #Lのみ集約
                     #print('receive : {0}, {1}'.format(i, l_rank))
                     
@@ -226,6 +234,8 @@ class BCMP_MVA_Computation:
                                 l_value_list.append(l_rank[n,r,idx]) #self.Lの代わりにこれを渡す(2022/02/03)
                                 n_list.append(n) #20220320
                                 r_list.append(r) #20220320
+								if n == 0:
+									lmd_value_list.append(lmd_rank[r,idx]) #lambdaも集約 (2022/08/23)
                 #self.comm.barrier() #プロセス同期
                 #print(self.T)
                 #print(self.lmd)
@@ -234,7 +244,7 @@ class BCMP_MVA_Computation:
             else:
                 #self.comm.send(k_combi_list_div[self.rank], dest=0, tag=11)
                 #self.comm.send(T, dest=0, tag=12)
-                #self.comm.send(lmd, dest=0, tag=13)
+                self.comm.send(lmd, dest=0, tag=13) #lambdaをrootへ送信 (2022/08/23)
                 self.comm.send(L, dest=0, tag=14)
             self.comm.barrier() #プロセス同期
             
@@ -248,13 +258,16 @@ class BCMP_MVA_Computation:
             #self.L = self.comm.bcast(self.L, root=0) #self.Lをブロードキャストするとエラーになるのでやめる(2022/02/03)
             state_list = self.comm.bcast(state_list, root=0)
             l_value_list = self.comm.bcast(l_value_list, root=0)
+			lmd_value_list = self.comm.bcast(lmd_value_list, root=0) #rootからlmd_value_listの受け取り (2022/08/23)
             if k_index == self.K_total:
                 last_L = l_value_list
+				last_lmd = lmd_value_list #最後のλ (2022/08/23)
             n_list = self.comm.bcast(n_list, root=0)
             r_list = self.comm.bcast(r_list, root=0)
             # 辞書に直す(2022/02/11)
             #state_dict = dict(zip(l_value_list,state_list))#state_listで検索して、l_value_listを返す
             state_dict = dict(zip(zip(state_list, n_list, r_list),l_value_list)) #20220320
+			state_lmd_dict = dict(zip(zip(state_list, r_list),lmd_value_list)) #lambda用辞書を作成(自分用、それぞれのプロセスで作成) (2022/08/23)
             ''' self.Lを利用しない 2022/02/04
             if self.rank != 0: #各プロセスでself.Lに集約(2022/02/03)
                 for n in range(self.N):
@@ -467,7 +480,8 @@ class BCMP_MVA_Computation:
 			state_number = int(self.getState(kkr)) #既存の関数を利用
 			sum_emlam = 0
 			for _r in range(self.R): #(8.45)前半のsum
-				sum_emlam += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] #self.lmdはl_listと同じ形にしないといけない
+				#sum_emlam += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] #self.lmdはl_listと同じ形にしないといけない
+				sum_emlam += self.alpha[_r,n] * state_lmd_dict.get((state_number,i)) / self.mu[n][_r] #lambdaを辞書で持ってくる (2022/08/23)
 			sum_pi = 0
 			for _j in range(1, self.m[n]):
 				sum_pi += (self.m[n] - _j ) * self.getPi8_44(n, _j, kkr, kr) #このgetPiは人数を減らさない
@@ -477,7 +491,8 @@ class BCMP_MVA_Computation:
 			sum_val = 0
 			state_number = int(self.getState(kkr))
 			for _r in range(self.R):
-				sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr)
+				#sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr)
+				sum_val += self.alpha[_r,n] * state_lmd_dict.get((state_number,i)) / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr) #lambdaを辞書で持ってくる (2022/08/23)
 			return 1 / j * (sum_val)
 
 	def getPi8_44(self, n, j, k, kr): #(8.45)から(8.44)を呼び出すときだけ利用 (人数を減らさず呼び出し)
@@ -486,7 +501,8 @@ class BCMP_MVA_Computation:
 		for _r in range(self.R):
 			kr = np.zeros(self.R)
 			kr[_r] += 1
-			sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, k, kr) #ここで呼び出すgetPiのkrを変更しないといけない->修正、値があった
+			#sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, k, kr) #ここで呼び出すgetPiのkrを変更しないといけない->修正、値があった
+			sum_val += self.alpha[_r,n] * state_lmd_dict.get((state_number,i)) / self.mu[n][_r] * self.getPi(n, j-1, k, kr) #lambdaを辞書で持ってくる (2022/08/23)
 		return 1 / j * (sum_val)
 
 if __name__ == '__main__':
