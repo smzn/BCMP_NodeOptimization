@@ -132,7 +132,7 @@ class BCMP_MVA_Computation:
                             elif self.m[n] > 1: #複数窓口を追加(2022/08/19)
                                 sum_pi = 0
                                 for _j in range(self.m[n]-2+1): #(8.43) m>1のループ
-                                    sum_pi += self.getPi(n, _j, val, r1) #ここではk-1rではなく、引く前の値を渡す
+                                    sum_pi += self.getPi(n, _j, val, r1, state_lmd_dict) #ここではk-1rではなく、引く前の値を渡す
                                 T[n, r, idx] = 1 / (self.mu[r, n] * self.m[n]) * (1 + sum_l + sum_pi)
                 #print('T = {0}'.format(self.T))
                 #if self.rank == 0:
@@ -468,7 +468,7 @@ class BCMP_MVA_Computation:
         return tp
 
 
-    def getPi(self, n, j, k, kr): #(8.43)piのループを求める
+    def getPi(self, n, j, k, kr, state_lmd_dict): #(8.43)piのループを求める
         kkr = k - kr #指定クラスを1引いたもの
         if min(kkr) < 0:
             return 0
@@ -481,10 +481,13 @@ class BCMP_MVA_Computation:
             sum_emlam = 0
             for _r in range(self.R): #(8.45)前半のsum
                 #sum_emlam += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] #self.lmdはl_listと同じ形にしないといけない
-                sum_emlam += self.alpha[_r,n] * state_lmd_dict.get((state_number,i)) / self.mu[n][_r] #lambdaを辞書で持ってくる (2022/08/23)
+                lmd_value = state_lmd_dict.get((state_number,_r))
+                if lmd_value is None:
+                    lmd_value = 0
+                sum_emlam += self.alpha[_r,n] * lmd_value / self.mu[n][_r] #lambdaを辞書で持ってくる (2022/08/23)
             sum_pi = 0
             for _j in range(1, self.m[n]):
-                sum_pi += (self.m[n] - _j ) * self.getPi8_44(n, _j, kkr, kr) #このgetPiは人数を減らさない
+                sum_pi += (self.m[n] - _j ) * self.getPi8_44(n, _j, kkr, kr, state_lmd_dict) #このgetPiは人数を減らさない
             return 1 - 1 / self.m[n] * (sum_emlam + sum_pi)
             
         if j > 0 and sum(kkr) > 0: #(8.44) 
@@ -492,17 +495,21 @@ class BCMP_MVA_Computation:
             state_number = int(self.getState(kkr))
             for _r in range(self.R):
                 #sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr)
-                sum_val += self.alpha[_r,n] * state_lmd_dict.get((state_number,i)) / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr) #lambdaを辞書で持ってくる (2022/08/23)
+                lmd_value = state_lmd_dict.get((state_number,_r))
+                if lmd_value is None:
+                    lmd_value = 0
+                #sum_val += self.alpha[_r,n] * state_lmd_dict.get((state_number,_r)) / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr) #lambdaを辞書で持ってくる (2022/08/23)
+                sum_val += self.alpha[_r,n] * lmd_value / self.mu[n][_r] * self.getPi(n, j-1, kkr, kr, state_lmd_dict) #lambdaを辞書で持ってくる (2022/08/23)
             return 1 / j * (sum_val)
 
-    def getPi8_44(self, n, j, k, kr): #(8.45)から(8.44)を呼び出すときだけ利用 (人数を減らさず呼び出し)
+    def getPi8_44(self, n, j, k, kr, state_lmd_dict): #(8.45)から(8.44)を呼び出すときだけ利用 (人数を減らさず呼び出し)
         sum_val = 0
         state_number = int(self.getState(k))
         for _r in range(self.R):
             kr = np.zeros(self.R)
             kr[_r] += 1
             #sum_val += self.alpha[_r,n] * self.lmd[_r,state_number] / self.mu[n][_r] * self.getPi(n, j-1, k, kr) #ここで呼び出すgetPiのkrを変更しないといけない->修正、値があった
-            sum_val += self.alpha[_r,n] * state_lmd_dict.get((state_number,i)) / self.mu[n][_r] * self.getPi(n, j-1, k, kr) #lambdaを辞書で持ってくる (2022/08/23)
+            sum_val += self.alpha[_r,n] * state_lmd_dict.get((state_number,_r)) / self.mu[n][_r] * self.getPi(n, j-1, k, kr, state_lmd_dict) #lambdaを辞書で持ってくる (2022/08/23)
         return 1 / j * (sum_val)
 
 if __name__ == '__main__':
@@ -521,7 +528,7 @@ if __name__ == '__main__':
     K = [(K_total + i) // R for i in range(R)] #クラス人数を自動的に配分する
     mu = np.full((R, N), 1) #サービス率を同じ値で生成(サービス率は調整が必要)
     type_list = np.full(N, 1) #サービスタイプはFCFS
-    m = np.full(N, 1) #今回は窓口数1(複数窓口は実装できていない)
+    m = np.full(N, 2) #今回は窓口数1(複数窓口は実装できていない)
     #p = pd.read_csv('/content/drive/MyDrive/研究/BCMP/csv/transition33.csv')
     #bcmp = BCMP_MVA(N, R, K, mu, type_list, p, m)
     bcmp = BCMP_MVA_Computation(N, R, K, mu, type_list, m, K_total, rank, size, comm)
