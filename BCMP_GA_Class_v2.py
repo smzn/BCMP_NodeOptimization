@@ -152,6 +152,7 @@ class BCMP_GA_Class:
         np.savetxt('./ga_L_'+str(self.N)+'_'+str(self.R)+'_'+str(self.K_total)+'_'+str(self.node_number)+'_'+str(self.npop)+'_'+str(self.ngen)+'.csv', L_class, delimiter=',')
         np.savetxt('./ga_Node_'+str(self.N)+'_'+str(self.R)+'_'+str(self.K_total)+'_'+str(self.node_number)+'_'+str(self.npop)+'_'+str(self.ngen)+'.csv', individual, delimiter=',')
         np.savetxt('./ga_P_'+str(self.N)+'_'+str(self.R)+'_'+str(self.K_total)+'_'+str(self.node_number)+'_'+str(self.npop)+'_'+str(self.ngen)+'.csv', p, delimiter=',')
+        np.savetxt('./ga_Object_'+str(self.N)+'_'+str(self.R)+'_'+str(self.K_total)+'_'+str(self.node_number)+'_'+str(self.npop)+'_'+str(self.ngen)+'.csv', np.array(self.bestfit_seriese), delimiter=',')
         print('Final Result')
         print('L = {0}'.format(L_class))
         print('Node = {0}'.format(individual))
