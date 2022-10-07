@@ -207,6 +207,57 @@ class BCMP_GA_Class:
                     break
         return pr
 
+    def getEquivalence(self, th, roop, p):
+        list_number = 0 
+
+        #1.
+        equivalence = [[] for i in range(len(p))] 
+        
+        #2.
+        for ix in range(roop):
+            p = np.linalg.matrix_power(p.copy(), ix+1) 
+            for i in range(len(p)):
+                for j in range(i+1, len(p)):
+                    if(p[i][j] > th and p[j][i] > th):
+                        #3. 
+                        find = 0 
+                        for k in range(len(p)):
+                            if i in equivalence[k]:
+                                find = 1 
+                                if j not in equivalence[k]:
+                                    equivalence[k].append(j)        
+                                break
+                            if j in equivalence[k]: 
+                                find = 1 
+                                if i not in equivalence[k]:
+                                    equivalence[k].append(i)        
+                                break
+                        if(find == 0):
+                            equivalence[list_number].append(i)
+                            if(i != j):
+                                equivalence[list_number].append(j)
+                            list_number += 1
+
+        #4.
+        for i in range(len(p)):
+            find = 0
+            for j in range(len(p)):
+                if i in equivalence[j]:
+                    find = 1
+                    break
+            if find == 0:
+                equivalence[list_number].append(i)
+                list_number += 1
+
+        #5.
+        class_number = 0
+        for i in range(len(p)):
+            if len(equivalence[i]) > 0:
+                class_number += 1
+
+        return equivalence, class_number
+
+
    #距離行列作成関数
     def getDistance(self, node):
         distance_matrix = np.zeros((len(node),len(node)))
