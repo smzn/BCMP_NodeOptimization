@@ -8,6 +8,7 @@ import sys
 import numpy as np
 from numpy.random import randint
 from numpy.random import rand
+import random
 from mpi4py import MPI
 
 #ノードをランダムに与え、計算を実施する(2022/10/03)
@@ -39,12 +40,23 @@ class BCMP_GA_Class:
         self.mean_bestfit_seriese = [] #遺伝子全体平均の適合度
         #print('rank = {0}, size = {1}'.format(self.rank, self.size))
         #初期遺伝子をブロードキャスト
+        prate = 0.2 #人気度の割合
+        dim = 2 #拠点間距離の次元数
         if self.rank == 0:
             self.pool = [[self.getRandInt1() for i in range(self.N)] for j in range(self.npop)] #遺伝子を初期化
+            self.popularity = self.getPopurarity(self.N, self.R, prate) #人気度を設定
+            self.distance_matrix = self.getDistance(self.N, dim) #拠点間距離
+            print('Popularity : {0}'.format(self.popularity))
+            print('Distance : {0}'.format(self.distance_matrix))
         else:
             self.pool = [[]]
+            self.popularity = [[]] # N * Rの2次元リスト
+            self.distance_matrix = [[]] # N * Nの2次元リスト
         self.pool = self.comm.bcast(self.pool, root=0)
+        self.popularity = self.comm.bcast(self.popularity, root=0)
+        self.distance_matrix = self.comm.bcast(self.distance_matrix, root=0)
         #print(self.pool)
+        #print(self.popularity)
         
     #https://machinelearningmastery.com/simple-genetic-algorithm-from-scratch-in-python/
     # genetic algorithm
@@ -129,7 +141,7 @@ class BCMP_GA_Class:
             #20211230 Final Result
             self.getFinalResult(best)
         return [best, best_eval]
-    	  
+          
     def getFinalResult(self, individual):
         #1.Node List
         node = []
@@ -140,7 +152,9 @@ class BCMP_GA_Class:
         #distance_matrix = self.getDistance(node)
         #3. Transition Matrix with a gravity model
         #p = self.getGravity(distance_matrix)
-        p = self.getTransitionProbability(len(node))
+        #p = self.getTransitionProbability(len(node))
+        distance_matrix = self.getSelectDistanceMatrix(node, self.distance_matrix) #利用拠点から距離行列を作成(2022/10/17)
+        p = self.getGravity(distance_matrix) #選択ノードでの距離行列を重力モデルに渡す(2022/10/17)
         #4. Stationary Distribution
         import BCMP_MVA as mdl
         bcmp_mva = mdl.BCMP_MVA(len(node), self.R, self.K, self.mu, self.type_list, p, self.m)
@@ -158,7 +172,7 @@ class BCMP_GA_Class:
         print('Node = {0}'.format(individual))
         print('Node Number = {0}'.format(node))
         print('P = {0}'.format(p))
-    	    
+            
     def getOptimizeBCMP(self, individual):
         #1. 利用ノードリストの作成
         node = []
@@ -168,9 +182,10 @@ class BCMP_GA_Class:
         #2. 利用ノードでの距離行列作成
         #distance_matrix = self.getDistance(node)
         #3. 利用ノードでの推移確率行列の作成(重力モデルの利用)
-        #p = self.getGravity(distance_matrix)
-        #推移確率は自動生成にする(2022/10/03)
-        p = self.getTransitionProbability(len(node))
+        distance_matrix = self.getSelectDistanceMatrix(node, self.distance_matrix) #利用拠点から距離行列を作成(2022/10/17)
+        p = self.getGravity(distance_matrix) #選択ノードでの距離行列を重力モデルに渡す(2022/10/17)
+        #推移確率は自動生成にする(2022/10/03) -> 人気度と距離をランダムに生成して、推移確率pは重力モデルで作成
+        #p = self.getTransitionProbability(len(node))
         #逆行列を持つか確認
         #equivalence, class_number = self.getEquivalence(0, 100, p)#0は閾値、5はステップ数
         #if class_number > 1:
@@ -191,22 +206,22 @@ class BCMP_GA_Class:
             L.append(sum)
         return self.getObjective(L, capacity, pnenalty)   
 
-    #nodeが可変なのでローカル変数とする(2022/10/03)
-    def getTransitionProbability(self, node):
-        pr = np.zeros((self.R*node, self.R*node))
-        for r in range(self.R):
-            class_number = 0
-            while class_number != 1:
-                p = np.random.rand(node, node)
-                for i, val in enumerate(np.sum(p, axis=1)):
-                    p[i] /= val
-                for i in range(node):
-                    for j in range(node):
-                        pr[r*node+i,r*node+j] = p[i,j]
-                equivalence, class_number = self.getEquivalence(0, 5, p)
-                if class_number == 1:
-                    break
-        return pr
+    #nodeが可変なのでローカル変数とする(2022/10/03) -> 人気度と距離をランダムに発生して、推移確率はこれでは作成しない
+#    def getTransitionProbability(self, node):
+#        pr = np.zeros((self.R*node, self.R*node))
+#        for r in range(self.R):
+#            class_number = 0
+#            while class_number != 1:
+#                p = np.random.rand(node, node)
+#                for i, val in enumerate(np.sum(p, axis=1)):
+#                    p[i] /= val
+#                for i in range(node):
+#                    for j in range(node):
+#                        pr[r*node+i,r*node+j] = p[i,j]
+#                equivalence, class_number = self.getEquivalence(0, 5, p)
+#                if class_number == 1:
+#                    break
+#        return pr
 
     def getEquivalence(self, th, roop, p):
         list_number = 0 
@@ -258,17 +273,24 @@ class BCMP_GA_Class:
 
         return equivalence, class_number
 
+    #距離行列選択関数(2022/10/17)
+    def getSelectDistanceMatrix(self, node, distance_matrix):
+        nodelist = [True if i in node else False for i in range(len(distance_matrix)) ]
+        np_distance_matrix = np.array(distance_matrix)
+        np_distance_matrix = np_distance_matrix[:,nodelist][nodelist]
+        return  np_distance_matrix
+
 
    #距離行列作成関数
-    def getDistance(self, node):
-        distance_matrix = np.zeros((len(node),len(node)))
-        for row in self.distance.itertuples(): #右三角行列で作成される
-            if row.fromid in node and row.toid in node:
-                distance_matrix[node.index(int(row.fromid))][node.index(int(row.toid))] = row.distance
-        for i in range(len(distance_matrix)): #下三角に値を入れる(対称)
-            for j in range(i+1, len(distance_matrix)):
-                distance_matrix[j][i] = distance_matrix[i][j]
-        return distance_matrix
+#    def getDistance(self, node):
+#        distance_matrix = np.zeros((len(node),len(node)))
+#        for row in self.distance.itertuples(): #右三角行列で作成される
+#            if row.fromid in node and row.toid in node:
+#                distance_matrix[node.index(int(row.fromid))][node.index(int(row.toid))] = row.distance
+#        for i in range(len(distance_matrix)): #下三角に値を入れる(対称)
+#            for j in range(i+1, len(distance_matrix)):
+#                distance_matrix[j][i] = distance_matrix[i][j]
+#        return distance_matrix
         
    #重力モデルで推移確率行列を作成 
     def getGravity(self, distance): #distanceは距離行列(getDistanceで作成)、popularityはクラス分の人気度
@@ -282,7 +304,7 @@ class BCMP_GA_Class:
             for i in range(len(distance) * r, len(distance) * (r+1)):
                 for j in range(len(distance) * r, len(distance) * (r+1)):
                     if distance[i % len(distance)][j % len(distance)] > 0:
-                        tp[i][j] = C * (self.popularity[i % len(distance)][r]**alpha) * (self.popularity[j % len(distance)][r]**beta) / (distance[i % len(distance)][j % len(distance)]**eta)
+                        tp[i][j] = C * (self.popularity[i % len(distance)][r]**alpha) * (self.popularity[j % len(distance)][r]**beta) / (int(distance[i % len(distance)][j % len(distance)])**eta)
         row_sum = np.sum(tp, axis=1) #行和を算出
         for i in range(len(tp)): #行和を1にする
             if row_sum[i] > 0:
@@ -301,34 +323,34 @@ class BCMP_GA_Class:
     
     # tournament selection
     def selection(self, k=3):
-    	# first random selection
-    	selection_ix = randint(self.npop)
-    	for ix in randint(0, self.npop, k-1):
-    		# check if better (e.g. perform a tournament)
-    		if self.scores[ix] < self.scores[selection_ix]:
-    			selection_ix = ix
-    	return self.pool[selection_ix]
+        # first random selection
+        selection_ix = randint(self.npop)
+        for ix in randint(0, self.npop, k-1):
+            # check if better (e.g. perform a tournament)
+            if self.scores[ix] < self.scores[selection_ix]:
+                selection_ix = ix
+        return self.pool[selection_ix]
      
     # crossover two parents to create two children
     def crossover(self, p1, p2):
-    	# children are copies of parents by default
-    	c1, c2 = p1.copy(), p2.copy()
-    	# check for recombination
-    	if rand() < self.crosspb:
-    		# select crossover point that is not on the end of the string
-    		pt = randint(1, len(p1)-2)
-    		# perform crossover
-    		c1 = p1[:pt] + p2[pt:]
-    		c2 = p2[:pt] + p1[pt:]
-    	return [c1, c2]
+        # children are copies of parents by default
+        c1, c2 = p1.copy(), p2.copy()
+        # check for recombination
+        if rand() < self.crosspb:
+            # select crossover point that is not on the end of the string
+            pt = randint(1, len(p1)-2)
+            # perform crossover
+            c1 = p1[:pt] + p2[pt:]
+            c2 = p2[:pt] + p1[pt:]
+        return [c1, c2]
      
     # mutation operator
     def mutation(self, bitstring):
-    	for i in range(len(bitstring)):
-    		# check for a mutation
-    		if rand() < self.mutpb:
-    			# flip the bit
-    			bitstring[i] = 1 - bitstring[i]
+        for i in range(len(bitstring)):
+            # check for a mutation
+            if rand() < self.mutpb:
+                # flip the bit
+                bitstring[i] = 1 - bitstring[i]
  
     def getGraph(self):
         #グラフ描画
@@ -356,6 +378,57 @@ class BCMP_GA_Class:
         else:
             return 0
         
+    # 重複なしランダム生成 #https://magazine.techacademy.jp/magazine/21160
+    def rand_ints_nodup(self, a, b, k):
+        ns = []
+        while len(ns) < k:
+            n = random.randint(a, b)
+            if not n in ns:
+                ns.append(n)
+        return ns
+        
+    #人気度ランダム作成関数
+    def getPopurarity(self, N, R, prate):
+        #人気度配列作成
+        ranking = [[0 for i in range(R)] for j in range(N)]
+        
+        #histgram生成用
+        histdata = [[],[]] ##
+        
+        #正規分布標準偏差
+        scale = 2
+        
+        #人気拠点決定
+        for r in range(R):
+            pnindex = self.rand_ints_nodup(0, N-1, int(N*prate))
+            for n in range(N):
+                if n in pnindex:
+                    rnd_val = np.random.normal(15, scale) #平均15標準偏差1の正規分布
+                    histdata[1].append(rnd_val)##
+                    ranking[n][r] = round(rnd_val)##
+                else:
+                    rnd_val = np.random.normal(5, scale) #平均5標準偏差1の正規分布
+                    histdata[0].append(rnd_val)
+                    ranking[n][r] = round(rnd_val)##
+                
+                if ranking[n][r] < 1:
+                    ranking[n][r] = 1
+        
+        return ranking
+        
+    def getDistance(self, N, dim):
+        #位置情報生成
+        position = np.random.randint(0, 500, (N, dim))#0~500の乱数
+        #graph3D(position)#グラフ描画
+        
+        #距離生成
+        distance = [[-1 for i in range(N)] for j in range(N)] 
+        for i in range(N):
+            for j in range(N):
+                distance[i][j] = np.linalg.norm(position[j]-position[i])
+        
+        #return position.tolist(), distance
+        return distance
         
 if __name__ == '__main__':
     comm = MPI.COMM_WORLD
@@ -368,7 +441,7 @@ if __name__ == '__main__':
     node_number = int(sys.argv[4]) #拠点利用数
     npop = int(sys.argv[5]) #遺伝子数
     ngen = int(sys.argv[6]) #世代数
-	#推移確率は自動的に与える
+    #推移確率は自動的に与える
     #popularity_file = './csv/popularity2.csv'
     #distance_file = './csv/distance.csv'
     crosspb = 0.5
