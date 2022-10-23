@@ -48,6 +48,8 @@ class BCMP_GA_Class:
             self.distance_matrix = self.getDistance(self.N, dim) #拠点間距離
             print('Popularity : {0}'.format(self.popularity))
             print('Distance : {0}'.format(self.distance_matrix))
+            np.savetxt('./popularity_'+str(self.N)+'_'+str(self.R)+'_'+str(self.K_total)+'_'+str(self.node_number)+'_'+str(self.npop)+'_'+str(self.ngen)+'.csv', np.array(self.popularity), delimiter=',', fmt='%d')
+            np.savetxt('./distance_'+str(self.N)+'_'+str(self.R)+'_'+str(self.K_total)+'_'+str(self.node_number)+'_'+str(self.npop)+'_'+str(self.ngen)+'.csv', self.distance_matrix, delimiter=',', fmt='%.5f')
         else:
             self.pool = [[]]
             self.popularity = [[]] # N * Rの2次元リスト
@@ -419,6 +421,7 @@ class BCMP_GA_Class:
     def getDistance(self, N, dim):
         #位置情報生成
         position = np.random.randint(0, 500, (N, dim))#0~500の乱数
+        np.savetxt('./position_'+str(self.N)+'_'+str(self.R)+'_'+str(self.K_total)+'_'+str(self.node_number)+'_'+str(self.npop)+'_'+str(self.ngen)+'.csv', position, delimiter=',', fmt='%d')
         #graph3D(position)#グラフ描画
         
         #距離生成
